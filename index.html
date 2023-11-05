@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <title>Whiteboard</title>
+    <style>
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        .sidebar {
+            height: 80px;
+            width: 100%;
+            position: fixed;
+            z-index: 1;
+            bottom: 0;
+            left: 0;
+            background-color: #f1f1f1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-top: 2px solid #000;
+            overflow-x: auto;
+        }
+        .content {
+            padding: 0;
+            height: calc(100vh - 45px);
+            overflow: hidden;
+        }
+        .whiteboard {
+            width: 100%;
+            height: 100%;
+            display: block;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+        }
+        .logo {
+            display: flex;
+            justify-content: center;
+        }
+        .logo img {
+            width: 35px;
+            margin: 10px 30px;
+        }
+        .sidebar a {
+            text-decoration: none;
+            color: black;
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 0 0 5px 5px;
+        }
+        .sidebar a:hover {
+            color: #0096ff;
+        }
+        .sidebar a.active {
+            color: #0096ff;
+            border: 1px solid #0096ff;
+            border-radius: 50%;
+        }
+        .range-container {
+            display: none;
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #f1f1f1;
+            padding: 3px;
+            border: 1px solid #000;
+            border-radius: 10px;
+            z-index: 1;
+        }
+
+        .range-container input[type="range"] {
+            width: 200px;
+            transform: none;
+        }
+
+        #dropdownContainer {
+            position: relative;
+            display: inline-block;
+            margin: 0 5px;
+        }
+
+        #dropdownContainer select {
+            width: 100px;
+            padding: 4px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        /* Gaya untuk tombol unduh */
+        #dropdownContainer button {
+            display: inline-block;
+            padding: 6px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        #dropdownContainer button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <img src="img/logo.png" alt="profile">
+    </div>
+
+    <div class="content">
+        <canvas class="whiteboard"></canvas>
+    </div>
+
+    <div class="range-container" id="rangeContainer">
+        <input type="range" id="thicknessRange" min="1" max="20" step="1" value="5" oninput="changeThickness(event)">
+    </div>
+
+    <div class="sidebar">
+        <input type="color" id="colorPicker" onchange="changeColor(event)" style="margin: 0 5px;">
+        <a href="#" id="penIcon" onclick="switchToPen(); showRangeContainer('pen')" class="active"><i class="fas fa-pen"></i></a>
+        <a href="#" id="eraserIcon" onclick="useEraser()"><i class="fas fa-eraser"></i></a>
+        <a href="#" onclick="clearCanvas()"><i class="fas fa-trash-alt"></i></a>
+        <a href="#" onclick="toggleDropdown()"><i class="fa-solid fa-download"></i></a>
+        <div id="dropdownContainer" style="display: none;">
+            <select id="imageFormat">
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+            </select>
+            <button onclick="downloadCanvas()">Unduh</button>
+        </div>
+        <a href="#" id="fontIcon" onclick="toggleTextMode()"><i class="fa-solid fa-font"></i></a>
+    </div>
+
+    <script>
+        const canvas = document.querySelector('.whiteboard');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let currentTool = 'pen';
+        let currentThickness = 5;
+        let currentColor = '#000';
+        let isEraser = false;
+        let originalColor = currentColor;
+        let rangeContainerVisible = false;
+        let previousColor = currentColor;
+        let textInputActive = false;
+        let textInputX = 0;
+        let textInputY = 0;
+
+        function showRangeContainer(tool) {
+            const rangeContainer = document.getElementById('rangeContainer');
+            rangeContainer.style.display = 'block';
+            rangeContainerVisible = true;
+            currentTool = tool;
+            document.getElementById('penIcon').classList.add('active');
+            document.getElementById('eraserIcon').classList.remove('active');
+        }
+
+        function hideRangeContainer() {
+            const rangeContainer = document.getElementById('rangeContainer');
+            rangeContainer.style.display = 'none';
+            rangeContainerVisible = false;
+        }
+
+        function changeColor(event) {
+            currentColor = event.target.value;
+            isEraser = false;
+            if (currentTool === 'pen') {
+                originalColor = currentColor;
+            }
+        }
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight - 80;
+        }
+
+        function getEventPosition(e) {
+            if (e.touches && e.touches.length === 1) {
+                return {
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY
+                };
+            } else {
+                return {
+                    clientX: e.clientX,
+                    clientY: e.clientY
+                };
+            }
+        }
+
+        function draw(e) {
+            const pos = getEventPosition(e);
+            if (!isDrawing) return;
+            if (rangeContainerVisible) {
+                hideRangeContainer();
+            }
+            ctx.lineWidth = currentThickness;
+            ctx.lineCap = 'round';
+            if (isEraser) {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.lineTo(pos.clientX, pos.clientY - 65);
+                ctx.stroke();
+                ctx.globalCompositeOperation = 'source-over';
+            } else {
+                ctx.strokeStyle = currentColor;
+                ctx.lineTo(pos.clientX, pos.clientY - 65);
+                ctx.stroke();
+            }
+            ctx.beginPath();
+            ctx.moveTo(pos.clientX, pos.clientY - 65);
+        }
+
+        function startDrawing(e) {
+            const pos = getEventPosition(e);
+            isDrawing = true;
+            hideRangeContainer();
+            ctx.beginPath();
+            ctx.moveTo(pos.clientX, pos.clientY - 65);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function useEraser() {
+            isEraser = true;
+            originalColor = currentColor;
+            currentColor = 'rgba(255,255,255,1)';
+            document.getElementById('eraserIcon').classList.add('active');
+            document.getElementById('penIcon').classList.remove('active');
+        }
+
+        function switchToPen() {
+            isEraser = false;
+            currentColor = originalColor;
+            document.getElementById('penIcon').classList.add('active');
+            document.getElementById('eraserIcon').classList.remove('active');
+        }
+
+        function changeThickness(event) {
+            if (!isEraser) {
+                currentThickness = event.target.value;
+                ctx.lineWidth = currentThickness;
+            }
+        }
+
+        function downloadCanvas() {
+            const link = document.createElement('a');
+            const format = document.getElementById('imageFormat').value;
+            if (format === 'jpeg') {
+                // Simpan warna latar belakang asli
+                const originalBackgroundColor = canvas.style.backgroundColor;
+                // Ganti latar belakang menjadi putih
+                canvas.style.backgroundColor = 'white';
+                // Buat salinan dari kanvas
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = canvas.width;
+                tempCanvas.height = canvas.height;
+                tempCtx.fillStyle = 'white';
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                tempCtx.drawImage(canvas, 0, 0);
+                // Kembalikan latar belakang ke warna aslinya
+                canvas.style.backgroundColor = originalBackgroundColor;
+                // Unduh kanvas
+                link.download = `whiteboard.${format}`;
+                link.href = tempCanvas.toDataURL(`image/${format}`);
+                link.click();
+            } else {
+                link.download = `whiteboard.${format}`;
+                link.href = canvas.toDataURL(`image/${format}`);
+                link.click();
+            }
+        }
+
+
+        function toggleDropdown() {
+            const dropdownContainer = document.getElementById('dropdownContainer');
+            if (dropdownContainer.style.display === 'none') {
+                dropdownContainer.style.display = 'block';
+            } else {
+                dropdownContainer.style.display = 'none';
+            }
+        }
+
+        // Fungsi untuk menambahkan teks ke kanvas
+        function addTextToCanvas() {
+            const text = prompt('Masukkan teks:');
+            if (text) {
+                ctx.font = '20px Arial';
+                ctx.fillStyle = currentColor; // Warna teks sama dengan warna yang dipilih
+                ctx.fillText(text, textInputX, textInputY); // Menggambar teks pada posisi yang telah dipilih
+            }
+        }
+
+        function deactivatePen() {
+            isDrawing = false;
+            document.getElementById('penIcon').classList.remove('active');
+        }
+
+        // Fungsi untuk beralih ke mode teks
+        function toggleTextMode() {
+            if (textInputActive) {
+                textInputActive = false;
+                deactivatePen();
+                document.getElementById('fontIcon').classList.remove('active');
+                canvas.removeEventListener('click', handleTextModeClick);
+                // Menonaktifkan penghapus ketika mode teks dimatikan
+                isEraser = false;
+                currentColor = originalColor;
+                document.getElementById('eraserIcon').classList.remove('active');
+            } else {
+                textInputActive = true;
+                deactivatePen();
+                document.getElementById('fontIcon').classList.add('active');
+                canvas.addEventListener('click', handleTextModeClick);
+            }
+        }
+
+        // Fungsi untuk menangani klik saat mode teks aktif
+        function handleTextModeClick(e) {
+            if (textInputActive) {
+                const pos = getEventPosition(e);
+                textInputX = pos.clientX;
+                textInputY = pos.clientY - 65;
+                addTextToCanvas();
+                textInputActive = false;
+                document.getElementById('fontIcon').classList.remove('active');
+                canvas.removeEventListener('click', handleTextModeClick);
+            }
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        canvas.addEventListener('touchstart', startDrawing);
+        canvas.addEventListener('touchmove', draw);
+        canvas.addEventListener('touchend', stopDrawing);
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+    </script>
+</body>
+</html>
